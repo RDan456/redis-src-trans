@@ -118,25 +118,23 @@
 #include "endianconv.h"
 #include "redisassert.h"
 
-#define ZIP_END 255         /* Special "end of ziplist" entry. */
-#define ZIP_BIG_PREVLEN 254 /* Max number of bytes of the previous entry, for
-                               the "prevlen" field prefixing each entry, to be
-                               represented with just a single byte. Otherwise
-                               it is represented as FF AA BB CC DD, where
-                               AA BB CC DD are a 4 bytes unsigned integer
-                               representing the previous entry len. */
+#define ZIP_END 255    ///ziplist的结尾标志
 
-/* Different encoding/length possibilities */
-#define ZIP_STR_MASK 0xc0
-#define ZIP_INT_MASK 0x30
-#define ZIP_STR_06B (0 << 6)
-#define ZIP_STR_14B (1 << 6)
-#define ZIP_STR_32B (2 << 6)
-#define ZIP_INT_16B (0xc0 | 0<<4)
-#define ZIP_INT_32B (0xc0 | 1<<4)
-#define ZIP_INT_64B (0xc0 | 2<<4)
-#define ZIP_INT_24B (0xc0 | 3<<4)
-#define ZIP_INT_8B 0xfe
+///对于每个条目前面的“ prevlen”字段，前一个条目的最大字节数仅用一个字节表示。 否则，它表示为FF AA BB CC DD，
+///其中AA BB CC DD是4个字节的无符号整数，表示上一个条目len。
+#define ZIP_BIG_PREVLEN 254 
+
+/// 不同的编码/长度的种类
+#define ZIP_STR_MASK 0xc0 ///字符串类型的长度 1100 0000
+#define ZIP_INT_MASK 0x30 ///INT类型长度 0011 0000
+#define ZIP_STR_06B (0 << 6) ///字符串类型的长度 0000 0000
+#define ZIP_STR_14B (1 << 6) ///字符串类型的长度 0100 0000
+#define ZIP_STR_32B (2 << 6) ///字符串的长度 1000 0000
+#define ZIP_INT_16B (0xc0 | 0<<4) ///INT16类型长度 1100 0000
+#define ZIP_INT_32B (0xc0 | 1<<4) //1101 0000
+#define ZIP_INT_64B (0xc0 | 2<<4) //1110 0000
+#define ZIP_INT_24B (0xc0 | 3<<4) //1111 0000
+#define ZIP_INT_8B 0xfe //1111 1110
 
 /* 4 bit integer immediate encoding |1111xxxx| with xxxx between
  * 0001 and 1101. */
