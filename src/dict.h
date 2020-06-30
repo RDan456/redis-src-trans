@@ -117,39 +117,39 @@ typedef void (dictScanBucketFunction)(void *privdata, dictEntry **bucketref); //
 #define dictIsRehashing(d) ((d)->rehashidx != -1) ///定义获取是正在进行rehash操作的方法
 
 /* API 定义*/
-dict *dictCreate(dictType *type, void *privDataPtr); ///构建一个新的dict
-int dictExpand(dict *d, unsigned long size); ///根据size的大小调整字典d的hash表的大小
+dict *dictCreate(dictType *type, void *privDataPtr); ///构建一个新的字典
+int dictExpand(dict *d, unsigned long size); ///扩展或者创建字典
 int dictAdd(dict *d, void *key, void *val); ///向字典中新添加一个键值对
-dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing); ///将key插入到字典d新创建的节点上
+dictEntry *dictAddRaw(dict *d, void *key, dictEntry **existing); ///在字典中添加键值对，但是不直接吸入值，而是返回key对应的内存地址，其他函数进行值写入
 dictEntry *dictAddOrFind(dict *d, void *key); ///查找key是否在字典表中存在，如果不存在就添加，存在就返回该节点
-int dictReplace(dict *d, void *key, void *val); ///在字典中替换掉键为key的值
+int dictReplace(dict *d, void *key, void *val); ///在字典中替换掉键为key的value，如果如key不存在，直接返回
 int dictDelete(dict *d, const void *key); ///从字典d中删除键为key的节点
-dictEntry *dictUnlink(dict *ht, const void *key); ///
-void dictFreeUnlinkedEntry(dict *d, dictEntry *he); ///
-void dictRelease(dict *d); ///释放字典dict
-dictEntry * dictFind(dict *d, const void *key);
-void *dictFetchValue(dict *d, const void *key);
-int dictResize(dict *d);
-dictIterator *dictGetIterator(dict *d);
-dictIterator *dictGetSafeIterator(dict *d);
-dictEntry *dictNext(dictIterator *iter);
-void dictReleaseIterator(dictIterator *iter);
-dictEntry *dictGetRandomKey(dict *d);
-dictEntry *dictGetFairRandomKey(dict *d);
-unsigned int dictGetSomeKeys(dict *d, dictEntry **des, unsigned int count);
-void dictGetStats(char *buf, size_t bufsize, dict *d);
-uint64_t dictGenHashFunction(const void *key, int len);
-uint64_t dictGenCaseHashFunction(const unsigned char *buf, int len);
-void dictEmpty(dict *d, void(callback)(void*));
-void dictEnableResize(void);
-void dictDisableResize(void);
-int dictRehash(dict *d, int n);
-int dictRehashMilliseconds(dict *d, int ms);
+dictEntry *dictUnlink(dict *ht, const void *key); ///从字典表中查找一个元素
+void dictFreeUnlinkedEntry(dict *d, dictEntry *he); ///释放由dictUnlink函数查找到的节点
+void dictRelease(dict *d); ///清除并释放字典
+dictEntry * dictFind(dict *d, const void *key); ///在字典中查询key是否存在，存在则返回对应的地址
+void *dictFetchValue(dict *d, const void *key); ///在字典中查询key对应的value
+int dictResize(dict *d); ///对字典进行扩容操作
+dictIterator *dictGetIterator(dict *d); ///创建字典的迭代器，默认是非安全的迭代器
+dictIterator *dictGetSafeIterator(dict *d); ///创建字典的安全迭代器
+dictEntry *dictNext(dictIterator *iter); ///获取迭代器指向的当前节点
+void dictReleaseIterator(dictIterator *iter); ///释放迭代器
+dictEntry *dictGetRandomKey(dict *d); ///随机获取一个key（非公平）
+dictEntry *dictGetFairRandomKey(dict *d); ///随机获取一个key(公平)
+unsigned int dictGetSomeKeys(dict *d, dictEntry **des, unsigned int count); ///随机获取count个key
+void dictGetStats(char *buf, size_t bufsize, dict *d); ///
+uint64_t dictGenHashFunction(const void *key, int len); ///生成key对应的hash的函数
+uint64_t dictGenCaseHashFunction(const unsigned char *buf, int len); ///生成key对应的hash值
+void dictEmpty(dict *d, void(callback)(void*)); ///清空字典表
+void dictEnableResize(void); ///修改字典可扩容状态
+void dictDisableResize(void); ///修改字典不可扩容状态
+int dictRehash(dict *d, int n); ///进行rehash操作
+int dictRehashMilliseconds(dict *d, int ms); ///在规定时间内进行rehash操作
 void dictSetHashFunctionSeed(uint8_t *seed);
-uint8_t *dictGetHashFunctionSeed(void);
-unsigned long dictScan(dict *d, unsigned long v, dictScanFunction *fn, dictScanBucketFunction *bucketfn, void *privdata);
-uint64_t dictGetHash(dict *d, const void *key); ///通过key在dict中获取值对应值为uint64
-dictEntry **dictFindEntryRefByPtrAndHash(dict *d, const void *oldptr, uint64_t hash); ///
+uint8_t *dictGetHashFunctionSeed(void); ///
+unsigned long dictScan(dict *d, unsigned long v, dictScanFunction *fn, dictScanBucketFunction *bucketfn, void *privdata); ///遍历整个字典
+uint64_t dictGetHash(dict *d, const void *key); ///找到key对应的hash值
+dictEntry **dictFindEntryRefByPtrAndHash(dict *d, const void *oldptr, uint64_t hash); ///通过使用指针和预先预算的hash值查找节点
 
 ///hash表的类型，这三个函数在dict.c文件中有定义
 extern dictType dictTypeHeapStringCopyKey;
