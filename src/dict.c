@@ -1,8 +1,7 @@
 /*
- *
+ * redis中字典操作的实现
  */
 #include "fmacros.h"
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -19,26 +18,21 @@
 #include <assert.h>
 #endif
 
-/* Using dictEnableResize() / dictDisableResize() we make possible to
- * enable/disable resizing of the hash table as needed. This is very important
- * for Redis, as we use copy-on-write and don't want to move too much memory
- * around when there is a child performing saving operations.
+/* 使用dictEnableResize()或者dictDisableResize()，我们可以根据需要启用/禁用哈希表的大小调整。 
+ * 这对于Redis非常重要，因为我们使用写时复制，并且在有子执行保存操作时不希望在内存中移动太多。
  *
- * Note that even when dict_can_resize is set to 0, not all resizes are
- * prevented: a hash table is still allowed to grow if the ratio between
- * the number of elements and the buckets > dict_force_resize_ratio. */
-static int dict_can_resize = 1;
-static unsigned int dict_force_resize_ratio = 5;
+ * 请注意，即使将dict_can_resize设置为0，也不会阻止所有调整大小：如果元素数和存储桶数之比> dict_force_resize_ratio，则仍然允许散列表增大。 
+ */
+static int dict_can_resize = 1; ///表示字典是否启动rehash。dictEableResize()和dictDisableResize()可以修改该变量的值
+static unsigned int dict_force_resize_ratio = 5;///如果used / size 大于了dict_force_resize_ratio，就需要强制进行rehash操作
 
-/* -------------------------- private prototypes ---------------------------- */
+///一些私有的方法
+static int _dictExpandIfNeeded(dict *ht); ///将字典ht进行扩展操作
+static unsigned long _dictNextPower(unsigned long size);  ///用来表示一个hash表数组大小的值，它为2的n次方并且大于size
+static long _dictKeyIndex(dict *ht, const void *key, uint64_t hash, dictEntry **existing); ///获取key对应的hash表中的索引
+static int _dictInit(dict *ht, dictType *type, void *privDataPtr); ///初始化hash表
 
-static int _dictExpandIfNeeded(dict *ht);
-static unsigned long _dictNextPower(unsigned long size);
-static long _dictKeyIndex(dict *ht, const void *key, uint64_t hash, dictEntry **existing);
-static int _dictInit(dict *ht, dictType *type, void *privDataPtr);
-
-/* -------------------------- hash functions -------------------------------- */
-
+/***************************begin : 一系列关于hash的函数***********************************/
 static uint8_t dict_hash_function_seed[16];
 
 void dictSetHashFunctionSeed(uint8_t *seed) {
@@ -62,106 +56,102 @@ uint64_t dictGenHashFunction(const void *key, int len) {
 uint64_t dictGenCaseHashFunction(const unsigned char *buf, int len) {
     return siphash_nocase(buf,len,dict_hash_function_seed);
 }
+/***************************end : 一系列关于hash的函数***********************************/
 
-/* ----------------------------- API implementation ------------------------- */
 
-/* Reset a hash table already initialized with ht_init().
- * NOTE: This function should only be called by ht_destroy(). */
+/* 置已经用ht_init（）初始化的哈希表。
+ * 意：此函数只能由ht_destroy（）调用。 
+ */
 static void _dictReset(dictht *ht)
 {
-    ht->table = NULL;
-    ht->size = 0;
-    ht->sizemask = 0;
-    ht->used = 0;
+    ht->table = NULL; ///将hash表中的数组置空 
+    ht->size = 0;  ///将数组大小变为0
+    ht->sizemask = 0; /// 将偏移量置为零
+    ht->used = 0; ///将整个hash表中的元素个数置为零
 }
 
-/* Create a new hash table */
-dict *dictCreate(dictType *type,
-        void *privDataPtr)
+///创建一个新的hash表
+dict *dictCreate(dictType *type, void *privDataPtr)
 {
-    dict *d = zmalloc(sizeof(*d));
+    dict *d = zmalloc(sizeof(*d)); ///申请内存
 
-    _dictInit(d,type,privDataPtr);
+    _dictInit(d,type,privDataPtr); ///调用_dictInit函数进行初始化
     return d;
 }
 
-/* Initialize the hash table */
-int _dictInit(dict *d, dictType *type,
-        void *privDataPtr)
+///初始化hash表的函数
+int _dictInit(dict *d, dictType *type, oid *privDataPtr)
 {
-    _dictReset(&d->ht[0]);
+    _dictReset(&d->ht[0]); ///调用_dictReset对字典中的两个hash表进行初始化
     _dictReset(&d->ht[1]);
-    d->type = type;
-    d->privdata = privDataPtr;
-    d->rehashidx = -1;
-    d->iterators = 0;
-    return DICT_OK;
+    d->type = type; ///制定字典中节点操作的函数指针
+    d->privdata = privDataPtr; ///私有数据的指针
+    d->rehashidx = -1; ///设置是否正在进行rehash操作，-1表示没有进行
+    d->iterators = 0; ///设置正在迭代的迭代器的数量
+    return DICT_OK; ///返回操作成功
 }
 
-/* Resize the table to the minimal size that contains all the elements,
- * but with the invariant of a USED/BUCKETS ratio near to <= 1 */
+///将表的大小调整为包含所有元素的最小大小，但USED/BUCKETS比率的不变性接近<= 1 * 
 int dictResize(dict *d)
 {
     unsigned long minimal;
-
-    if (!dict_can_resize || dictIsRehashing(d)) return DICT_ERR;
-    minimal = d->ht[0].used;
-    if (minimal < DICT_HT_INITIAL_SIZE)
+   
+    /*如果有以下两种情况，表示不能进行resize操作：
+     *1. dict_can_resize被设置为0表示不能进行resize操作，返回DICT_ERR，
+     *2. 如果正在进行rehash操作，也不能进行resize操作，返回DICT_ERR
+     */
+    if (!dict_can_resize || dictIsRehashing(d)) return DICT_ERR; 
+    minimal = d->ht[0].used; ///如果没有进行rehash操作，所有的数据存储在ht[0]这个hash表中，所以ht[0].used表示整个字典中的元素个数
+    if (minimal < DICT_HT_INITIAL_SIZE) ///如果元素个数小于字典中hash表的初始化大小4，就直接将其赋值为4
         minimal = DICT_HT_INITIAL_SIZE;
-    return dictExpand(d, minimal);
+    return dictExpand(d, minimal); ///对字典d进行resize操作
 }
 
-/* Expand or create the hash table */
+///扩展或创建哈希表
 int dictExpand(dict *d, unsigned long size)
 {
-    /* the size is invalid if it is smaller than the number of
-     * elements already inside the hash table */
+    ///如果字典正在进行rehashing操作或者传入的大小小于哈希表中已经存在的元素数，则大小无效，直接返回DICT_ERR
     if (dictIsRehashing(d) || d->ht[0].used > size)
         return DICT_ERR;
 
-    dictht n; /* the new hash table */
-    unsigned long realsize = _dictNextPower(size);
+    dictht n; ///定义一个新的hash表
+    unsigned long realsize = _dictNextPower(size); ///计算出适合的扩容的大小（2的指数）
 
-    /* Rehashing to the same table size is not useful. */
+    ///如果计算出realsize大小刚好和字典中的元素个数相等，就直接返回DICT_ERR
     if (realsize == d->ht[0].size) return DICT_ERR;
 
-    /* Allocate the new hash table and initialize all pointers to NULL */
+    ///初始化这个新的hash表的各个成员数据
     n.size = realsize;
     n.sizemask = realsize-1;
-    n.table = zcalloc(realsize*sizeof(dictEntry*));
+    n.table = zcalloc(realsize*sizeof(dictEntry*)); ///为这个hash表中的数组申请内存空间
     n.used = 0;
 
-    /* Is this the first initialization? If so it's not really a rehashing
-     * we just set the first hash table so that it can accept keys. */
+    ///如果是第一次hash进行hash操作，表示ht[0]里面没有任何元素，我们就直接将字典的ht[0]指向n
     if (d->ht[0].table == NULL) {
         d->ht[0] = n;
-        return DICT_OK;
+        return DICT_OK; ///返回操作成功
     }
 
-    /* Prepare a second hash table for incremental rehashing */
-    d->ht[1] = n;
-    d->rehashidx = 0;
-    return DICT_OK;
+    d->ht[1] = n; ///如果不是第一次hash操作，我们只能将字典的ht[1]指向n
+    d->rehashidx = 0;///并且设置rehashidx，表示正在进行rehash操作
+    return DICT_OK; /// 返回操作成功
 }
 
-/* Performs N steps of incremental rehashing. Returns 1 if there are still
- * keys to move from the old to the new hash table, otherwise 0 is returned.
+/* 执行N步渐步式哈希。 如果仍有从ht[0]移动到ht[1]的键，则返回1，否则返回0。
  *
- * Note that a rehashing step consists in moving a bucket (that may have more
- * than one key as we use chaining) from the old to the new hash table, however
- * since part of the hash table may be composed of empty spaces, it is not
- * guaranteed that this function will rehash even a single bucket, since it
- * will visit at max N*10 empty buckets in total, otherwise the amount of
- * work it does would be unbound and the function may block for a long time. */
+ * 请注意，每次进行rehash操作是以一个hash表的索引为单位，也就是一个数组中对应的hash桶，这个hash有的元素很多，有的可能没有元素。
+ * 因此无法保证该函数在单个hash桶中也将重新哈希，因为它将总共访问最多N*10个空存储桶，否则它的工作量将不受限制，并且该函数可能会长时间阻塞。
+ */
 int dictRehash(dict *d, int n) {
-    int empty_visits = n*10; /* Max number of empty buckets to visit. */
-    if (!dictIsRehashing(d)) return 0;
+	
+    int empty_visits = n*10; ///最多访问的hash桶数量
+    if (!dictIsRehashing(d)) return 0; ///如果此时没有进行rehash操作，直接返回0.
 
-    while(n-- && d->ht[0].used != 0) {
+	///n步渐式hash，分n步进行
+    while(n-- && d->ht[0].used != 0) { ///如果还在n步范围内，并且原hash表中还有元素，也就是ht[0]中的used不为0，则可以进行下面操作
         dictEntry *de, *nextde;
 
-        /* Note that rehashidx can't overflow as we are sure there are more
-         * elements because ht[0].used != 0 */
+        /// 请注意rehashidx不会溢出，因为我们确定还有更多元素，因为ht[0].used！= 0 
         assert(d->ht[0].size > (unsigned long)d->rehashidx);
         while(d->ht[0].table[d->rehashidx] == NULL) {
             d->rehashidx++;
