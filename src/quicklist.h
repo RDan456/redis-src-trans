@@ -1,69 +1,42 @@
-/* quicklist.h - A generic doubly linked quicklist implementation
- *
- * Copyright (c) 2014, Matt Stancliff <matt@genges.com>
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright notice,
- *     this quicklist of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above copyright
- *     notice, this quicklist of conditions and the following disclaimer in the
- *     documentation and/or other materials provided with the distribution.
- *   * Neither the name of Redis nor the names of its contributors may be used
- *     to endorse or promote products derived from this software without
- *     specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
- */
-
-#include <stdint.h> // for UINTPTR_MAX
+///quicklist 是一个通用的双向链表 
+#include <stdint.h>
 
 #ifndef __QUICKLIST_H__
 #define __QUICKLIST_H__
 
-/* Node, quicklist, and Iterator are the only data structures used currently. */
+///node，quicklist和iterator是当前唯一使用的数据结构。 
 
-/* quicklistNode is a 32 byte struct describing a ziplist for a quicklist.
- * We use bit fields keep the quicklistNode at 32 bytes.
+/* quicklistNode是一个32字节的结构，快表的ziplist的节点。 我们使用位字段将quicklistNode保持为32个字节。
  * count: 16 bits, max 65536 (max zl bytes is 65k, so max count actually < 32k).
  * encoding: 2 bits, RAW=1, LZF=2.
  * container: 2 bits, NONE=1, ZIPLIST=2.
- * recompress: 1 bit, bool, true if node is temporarry decompressed for usage.
- * attempted_compress: 1 bit, boolean, used for verifying during testing.
- * extra: 10 bits, free for future use; pads out the remainder of 32 bits */
+ * recompress: 1 bit, bool, true 如果节点被临时压缩以供使用。
+ * attempted_compress: 1 bit, boolean, 用于测试期间的验证.
+ * extra: 12 bits, free for future use; pads out the remainder of 32 bits
+ */
+///快表中节点的数据结构定义
 typedef struct quicklistNode {
-    struct quicklistNode *prev;
-    struct quicklistNode *next;
-    unsigned char *zl;
-    unsigned int sz;             /* ziplist size in bytes */
-    unsigned int count : 16;     /* count of items in ziplist */
-    unsigned int encoding : 2;   /* RAW==1 or LZF==2 */
-    unsigned int container : 2;  /* NONE==1 or ZIPLIST==2 */
-    unsigned int recompress : 1; /* was this node previous compressed? */
-    unsigned int attempted_compress : 1; /* node can't compress; too small */
-    unsigned int extra : 10; /* more bits to steal for future usage */
+    struct quicklistNode *prev; ///指向前驱节点的指针
+    struct quicklistNode *next; ///指向后继节点的指针
+    unsigned char *zl;          ///如果说没有设置压缩的参数，zl指向一个压缩表，如果设置了压缩参数，就指向quicklistLZF结构
+    unsigned int sz;            ///压缩表的大小
+    unsigned int count : 16;    ///压缩表中的节点数，用16位来表示；注意 ： 在这里表示占位符的意思
+    unsigned int encoding : 2;  ///编码格式，表示是否采用LZF压缩算法进行快表节点压缩，1表示不用，2表示采用，用2位来表示
+    unsigned int container : 2; ///表示一个快表节点是否采用压缩表来保存数据，1表示不采用，2表示采用。用2位来表示
+    unsigned int recompress : 1;///用来标识该节点是否被压缩过，占用1位。如果recompress = 1,表示该节点等待被再次压缩
+    unsigned int attempted_compress : 1; ///测试使用，如果节点太小，，就不能被压缩
+    unsigned int extra : 10;    ///额外的空间，以供以后使用
 } quicklistNode;
 
 /* quicklistLZF is a 4+N byte struct holding 'sz' followed by 'compressed'.
  * 'sz' is byte length of 'compressed' field.
  * 'compressed' is LZF data with total (compressed) length 'sz'
- * NOTE: uncompressed length is stored in quicklistNode->sz.
- * When quicklistNode->zl is compressed, node->zl points to a quicklistLZF */
+ * 注意：未压缩的长度存储在quicklistNode-> sz中。
+ * 压缩quicklistNode-> zl时，node-> zl指向quicklistLZF
+ */
 typedef struct quicklistLZF {
-    unsigned int sz; /* LZF size in bytes*/
-    char compressed[];
+    unsigned int sz;  ///通过LZF算法压缩后压缩表的大小
+    char compressed[]; ///保存被压缩后的压缩表，它是柔性数组，大小不确定
 } quicklistLZF;
 
 /* Bookmarks are padded with realloc at the end of of the quicklist struct.
@@ -102,54 +75,57 @@ typedef struct quicklistBookmark {
  * 'fill' is the user-requested (or default) fill factor.
  * 'bookmakrs are an optional feature that is used by realloc this struct,
  *      so that they don't consume memory when not used. */
+///快表的数据结构声明
 typedef struct quicklist {
-    quicklistNode *head;
-    quicklistNode *tail;
-    unsigned long count;        /* total count of all entries in all ziplists */
-    unsigned long len;          /* number of quicklistNodes */
-    int fill : QL_FILL_BITS;              /* fill factor for individual nodes */
-    unsigned int compress : QL_COMP_BITS; /* depth of end nodes not to compress;0=off */
-    unsigned int bookmark_count: QL_BM_BITS;
-    quicklistBookmark bookmarks[];
+    quicklistNode *head;     ///双向链表的头部节点(指向最双向链表最左边)
+    quicklistNode *tail;     ///双向链表的尾部节点（指向双向链表最右边）
+    unsigned long count;     ///快表中所有压缩表节点和     
+    unsigned long len;       ///快表中的节点个数     
+    int fill : QL_FILL_BITS; ///保存压缩表的大小           
+    unsigned int compress : QL_COMP_BITS;///保存压缩的程度，0表示不保存 
+    unsigned int bookmark_count: QL_BM_BITS; ///保存bookmark的数量 
+    quicklistBookmark bookmarks[]; ///保存所有bookmark的数组
 } quicklist;
 
+///快表遍历的迭代器 
 typedef struct quicklistIter {
-    const quicklist *quicklist;
-    quicklistNode *current;
-    unsigned char *zi;
-    long offset; /* offset in current ziplist */
-    int direction;
+    const quicklist *quicklist; ///指向要遍历的快表
+    quicklistNode *current;     ///指向遍历快表中遍历的节点
+    unsigned char *zi;          ///指向节点中的ziplist迭代器
+    long offset;                ///当前压缩表中的偏移量
+    int direction;              ///迭代的方向
 } quicklistIter;
 
+///用于记录快表中快表节点的压缩表信息的结构体
 typedef struct quicklistEntry {
-    const quicklist *quicklist;
-    quicklistNode *node;
-    unsigned char *zi;
-    unsigned char *value;
-    long long longval;
-    unsigned int sz;
-    int offset;
+    const quicklist *quicklist; ///当前所在的快表
+    quicklistNode *node;        ///快表中的具体节点
+    unsigned char *zi;          ///节点中压缩表的指针
+    unsigned char *value;       ///压缩表中当前节点为字符串的value
+    long long longval;          ///压缩表中当前节点为整数的value
+    unsigned int sz;            ///压缩表的大小
+    int offset;                 ///当前压缩表位置的偏移量
 } quicklistEntry;
 
-#define QUICKLIST_HEAD 0
-#define QUICKLIST_TAIL -1
-
+#define QUICKLIST_HEAD 0 ///从头到尾的方式遍历
+#define QUICKLIST_TAIL -1 ///从未到头的方式遍历
+ 
 /* quicklist node encodings */
-#define QUICKLIST_NODE_ENCODING_RAW 1
-#define QUICKLIST_NODE_ENCODING_LZF 2
+#define QUICKLIST_NODE_ENCODING_RAW 1 ///没有进行压缩操作
+#define QUICKLIST_NODE_ENCODING_LZF 2 ///采用LZF算法进行压缩操作
 
 /* quicklist compression disable */
-#define QUICKLIST_NOCOMPRESS 0
+#define QUICKLIST_NOCOMPRESS 0 ///不能就快表进行压缩
 
 /* quicklist container formats */
-#define QUICKLIST_NODE_CONTAINER_NONE 1
-#define QUICKLIST_NODE_CONTAINER_ZIPLIST 2
+#define QUICKLIST_NODE_CONTAINER_NONE 1 ///快表节点中直接保存对象
+#define QUICKLIST_NODE_CONTAINER_ZIPLIST 2 ///快表节点中直接保存ziplist对象
 
+///检测压缩表是否被压缩，1表是被压缩，0表示不被压缩
 #define quicklistNodeIsCompressed(node)                                        \
     ((node)->encoding == QUICKLIST_NODE_ENCODING_LZF)
 
-/* Prototypes */
-quicklist *quicklistCreate(void);
+quicklist *quicklistCreate(void); ///创建一个空的压缩表
 quicklist *quicklistNew(int fill, int compress);
 void quicklistSetCompressDepth(quicklist *quicklist, int depth);
 void quicklistSetFill(quicklist *quicklist, int fill);
