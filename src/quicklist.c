@@ -246,9 +246,7 @@ size_t quicklistGetLzf(const quicklistNode *node, void **data) {
  * The only way to guarantee interior nodes get compressed is to iterate
  * to our "interior" compress depth then compress the next node we find.
  * If compress depth is larger than the entire list, we return immediately. */
-///对节点进行压缩，压缩是从头尾两个方向进行的，如果quicklist->compress == 1 表示快表两端有
-///一个节点不用进行压缩，如果quicklist->compress == 2，表示两端分别有两个节点不用进行压缩操
-//做... ...
+/// 在快表中查询node，如果node不在压缩程度的范围内，就进行压缩操作
 REDIS_STATIC void __quicklistCompress(const quicklist *quicklist,
                                       quicklistNode *node) {
     /* If length is less than our compress depth (from both sides),
@@ -260,28 +258,28 @@ REDIS_STATIC void __quicklistCompress(const quicklist *quicklist,
 
 #if 0
     /* Optimized cases for small depth counts */
-    if (quicklist->compress == 1) { ///如果压缩标志为1，表示快表头尾两端分别有一个节点不用进行压缩
+    if (quicklist->compress == 1) { ///如果压缩标志为1，表示可进行压缩操作
         quicklistNode *h = quicklist->head, *t = quicklist->tail; ///获取快表的头节点和尾节点
-        quicklistDecompressNode(h);///进行解压缩操作
+        quicklistDecompressNode(h);///如果需要解压，就进行解压缩操作
         quicklistDecompressNode(t);
-        if (h != node && t != node) ///
-            quicklistCompressNode(node); ///对于其他节点压缩操作
+        if (h != node && t != node) ///如果头节点和尾节点都不是我们要找的节点
+            quicklistCompressNode(node); ///就对该node进行压缩操作
         return;
-    } else if (quicklist->compress == 2) {///如果压缩标志为2，表示快表头尾两端分别有两个节点不用进行压缩
+    } else if (quicklist->compress == 2) {///如果压缩标志为2，两端的两个节点
         quicklistNode *h = quicklist->head, *hn = h->next, *hnn = hn->next;
         quicklistNode *t = quicklist->tail, *tp = t->prev, *tpp = tp->prev;
-        quicklistDecompressNode(h);///进行解压缩操作
+        quicklistDecompressNode(h);///如果需要解压，就进行解压缩操作
         quicklistDecompressNode(hn);
         quicklistDecompressNode(t);
         quicklistDecompressNode(tp);
         if (h != node && hn != node && t != node && tp != node) {
-            quicklistCompressNode(node); ///对其余节点进行压缩操作
+            quicklistCompressNode(node); ///如果上面4个节点都不是我们要查找的节点，就对node进行压缩操作
         }
         if (hnn != t) {
-            quicklistCompressNode(hnn);
+            quicklistCompressNode(hnn); ///如果第三个节点不是尾节点，将其进行压缩操作
         }
         if (tpp != h) {
-            quicklistCompressNode(tpp);
+            quicklistCompressNode(tpp); ///如果倒数第三个节点不是头节点，将其进行压缩操作
         }
         return;
     }
@@ -296,29 +294,30 @@ REDIS_STATIC void __quicklistCompress(const quicklist *quicklist,
     int depth = 0;
     int in_depth = 0;
     while (depth++ < quicklist->compress) { ///如果depth小于quicklist->compress，表示该节点不用进行压缩
-        quicklistDecompressNode(forward); ///所以进行解压缩操作
-        quicklistDecompressNode(reverse); ///解压缩操作
+        quicklistDecompressNode(forward); ///如果需要进行解压操作，就进行解压缩操作
+        quicklistDecompressNode(reverse); 
 
-        if (forward == node || reverse == node) ///如果找node节点,
+        if (forward == node || reverse == node) ///如果找node节点,就设置标志
             in_depth = 1;
 
-        if (forward == reverse)
+        if (forward == reverse) ///如果头尾指针相遇，直接返回
             return;
 
-        forward = forward->next;
-        reverse = reverse->prev;
+        forward = forward->next; ///指向后继节点
+        reverse = reverse->prev; ///指向前驱节点
     }
 
-    if (!in_depth)
+    if (!in_depth)  ///如果node不在两端不需要压缩的的范围，就表示需要就这个节点进行压缩
         quicklistCompressNode(node);
 
-    if (depth > 2) {
+    if (depth > 2) { ///如果深度大于2，需要压缩首尾两个指针指向的节点
         /* At this point, forward and reverse are one node beyond depth */
         quicklistCompressNode(forward);
         quicklistCompressNode(reverse);
     }
 }
 
+///如果node可以进行压缩操作，就将其压缩，否则，就通过__quicklistCompress()方法范围压缩，
 #define quicklistCompress(_ql, _node)                                          \
     do {                                                                       \
         if ((_node)->recompress)                                               \
@@ -328,31 +327,31 @@ REDIS_STATIC void __quicklistCompress(const quicklist *quicklist,
     } while (0)
 
 /* If we previously used quicklistDecompressNodeForUse(), just recompress. */
+///如果我们之前有调用quicklistDecompressNodeForUse()，就需要重新进行再次压缩
 #define quicklistRecompressOnly(_ql, _node)                                    \
     do {                                                                       \
         if ((_node)->recompress)                                               \
             quicklistCompressNode((_node));                                    \
     } while (0)
 
-/* Insert 'new_node' after 'old_node' if 'after' is 1.
- * Insert 'new_node' before 'old_node' if 'after' is 0.
- * Note: 'new_node' is *always* uncompressed, so if we assign it to
- *       head or tail, we do not need to uncompress it. */
+///如果after = 1， 表示在old_node节点后面插入新的节点
+///如果after = 0， 表示在old_node节点前面插入新的节点
+///新的节点是没有压缩过的，如果我们直接将其设置尾头节点和尾节点，是不用进行压缩操作
 REDIS_STATIC void __quicklistInsertNode(quicklist *quicklist,
                                         quicklistNode *old_node,
                                         quicklistNode *new_node, int after) {
     if (after) {
-        new_node->prev = old_node;
-        if (old_node) {
-            new_node->next = old_node->next;
-            if (old_node->next)
+        new_node->prev = old_node; ///在old_node后面插入new_node节点
+        if (old_node) { ///如果old_node存在
+            new_node->next = old_node->next; ///将new_node的next指针做修改
+            if (old_node->next) ///如果old_node的后继节点存在，就修改它的prev指针
                 old_node->next->prev = new_node;
-            old_node->next = new_node;
-        }
-        if (quicklist->tail == old_node)
-            quicklist->tail = new_node;
-    } else {
-        new_node->next = old_node;
+            old_node->next = new_node; ///修改old_node->next的值
+        } 
+        if (quicklist->tail == old_node) ///如果old_node是尾节点
+            quicklist->tail = new_node; ///则直接将新的尾节点指向new_node
+    } else {  
+        new_node->next = old_node; ///在old_node的前面插入new_node节点
         if (old_node) {
             new_node->prev = old_node->prev;
             if (old_node->prev)
@@ -360,41 +359,45 @@ REDIS_STATIC void __quicklistInsertNode(quicklist *quicklist,
             old_node->prev = new_node;
         }
         if (quicklist->head == old_node)
-            quicklist->head = new_node;
+            quicklist->head = new_node; /// 如果old_node是头节点，则直接修改快表的头节点指针，指向new_node
     }
     /* If this insert creates the only element so far, initialize head/tail. */
-    if (quicklist->len == 0) {
-        quicklist->head = quicklist->tail = new_node;
+    if (quicklist->len == 0) { ///如果插入之前是一个空的快表
+        quicklist->head = quicklist->tail = new_node; ///将快表的头节点指针和尾节点指针指向new_node
     }
 
-    if (old_node)
-        quicklistCompress(quicklist, old_node);
+    if (old_node) ///
+        quicklistCompress(quicklist, old_node); ///对old_node进行压缩操作
 
     quicklist->len++;
 }
 
 /* Wrappers for node inserting around existing node. */
+///在old_node前面插入节点
 REDIS_STATIC void _quicklistInsertNodeBefore(quicklist *quicklist,
                                              quicklistNode *old_node,
                                              quicklistNode *new_node) {
     __quicklistInsertNode(quicklist, old_node, new_node, 0);
 }
 
+///在old_node后面插入节点
 REDIS_STATIC void _quicklistInsertNodeAfter(quicklist *quicklist,
                                             quicklistNode *old_node,
                                             quicklistNode *new_node) {
     __quicklistInsertNode(quicklist, old_node, new_node, 1);
 }
 
+///判断快表节点的压缩表的大小是否满足fill的要求
 REDIS_STATIC int
 _quicklistNodeSizeMeetsOptimizationRequirement(const size_t sz,
                                                const int fill) {
     if (fill >= 0)
         return 0;
 
-    size_t offset = (-fill) - 1;
+    ///static const size_t optimization_level[] = {4096, 8192, 16384, 32768, 65536};
+    size_t offset = (-fill) - 1; ///fill小于0，offset表示它在数组中的偏移量
     if (offset < (sizeof(optimization_level) / sizeof(*optimization_level))) {
-        if (sz <= optimization_level[offset]) {
+        if (sz <= optimization_level[offset]) { ///算出fill的等级，如果sz小于对应等级的大小，则返回1，表示满足要求
             return 1;
         } else {
             return 0;
@@ -404,59 +407,65 @@ _quicklistNodeSizeMeetsOptimizationRequirement(const size_t sz,
     }
 }
 
+///判断sz大小是否超过了SIZE_SAFETY_LIMIT = 8192，
 #define sizeMeetsSafetyLimit(sz) ((sz) <= SIZE_SAFETY_LIMIT)
 
+///判断node节点是否能插入到快表中，主要通过fill和size两个指标进行判断
 REDIS_STATIC int _quicklistNodeAllowInsert(const quicklistNode *node,
                                            const int fill, const size_t sz) {
-    if (unlikely(!node))
+    if (unlikely(!node)) ///unlikely()表示为假可能性的函数，如果!node为假的可能性大，就直接返回
         return 0;
 
-    int ziplist_overhead;
+    int ziplist_overhead; ///
     /* size of previous offset */
-    if (sz < 254)
-        ziplist_overhead = 1;
+    if (sz < 254) ///上一个节点的信息
+        ziplist_overhead = 1; ///如果压缩表的大小小于254，需要一个字节编码
     else
-        ziplist_overhead = 5;
+        ziplist_overhead = 5; ///否则需要5个字节来编码
 
     /* size of forward offset */
-    if (sz < 64)
-        ziplist_overhead += 1;
-    else if (likely(sz < 16384))
+    if (sz < 64) ///当前节点的信息
+        ziplist_overhead += 1; ///如果长度小于64，用一个字节的编码
+    else if (likely(sz < 16384)) ///如果小于16384，就用两个字节编码
         ziplist_overhead += 2;
-    else
-        ziplist_overhead += 5;
+    else                         ///否则，用5个字节编码
+        ziplist_overhead += 5; 
 
     /* new_sz overestimates if 'sz' encodes to an integer type */
+    ///新节点的长度为当前节点长度 + 压缩表节点大小+压缩表当前节点编码长度 + 压缩表前一个节点编码长度
     unsigned int new_sz = node->sz + sz + ziplist_overhead;
-    if (likely(_quicklistNodeSizeMeetsOptimizationRequirement(new_sz, fill)))
-        return 1;
-    else if (!sizeMeetsSafetyLimit(new_sz))
+    if (likely(_quicklistNodeSizeMeetsOptimizationRequirement(new_sz, fill))) ///如果new_符合fill要求
+        return 1; ///返回成功
+    else if (!sizeMeetsSafetyLimit(new_sz)) ///如果new_sz的大小超过了安全线，返回0
         return 0;
-    else if ((int)node->count < fill)
+    else if ((int)node->count < fill) ///如果节点中压缩表节点数小于fill的要求，返回1 
         return 1;
     else
         return 0;
 }
 
+///根据fill来判断两个快表节点中的压缩表是否可以进行合并操作，如果可以则返回1，否则返回0
 REDIS_STATIC int _quicklistNodeAllowMerge(const quicklistNode *a,
                                           const quicklistNode *b,
                                           const int fill) {
-    if (!a || !b)
+    if (!a || !b) ///如果两个快表中有一个为空，则直接返回0
         return 0;
 
     /* approximate merged ziplist size (- 11 to remove one ziplist
      * header/trailer) */
+    ///计算连个压缩表的大小，但是要减去一个表头和结尾标志符的大小（4(albytes) + 4(zltail_offset) + 2(zllength) + 1(zlend) = 11）
     unsigned int merge_sz = a->sz + b->sz - 11;
-    if (likely(_quicklistNodeSizeMeetsOptimizationRequirement(merge_sz, fill)))
+    if (likely(_quicklistNodeSizeMeetsOptimizationRequirement(merge_sz, fill))) ///如果merge_sz符合要求，返回1
         return 1;
-    else if (!sizeMeetsSafetyLimit(merge_sz))
+    else if (!sizeMeetsSafetyLimit(merge_sz)) ///如果merge_sz大小超过了安全限定，返回0
         return 0;
-    else if ((int)(a->count + b->count) <= fill)
+    else if ((int)(a->count + b->count) <= fill) ///如果两个压缩表的节点总数符合要求，返回1
         return 1;
     else
         return 0;
 }
 
+///更新快表节点中的压缩表大小
 #define quicklistNodeUpdateSz(node)                                            \
     do {                                                                       \
         (node)->sz = ziplistBlobLen((node)->zl);                               \
@@ -466,29 +475,32 @@ REDIS_STATIC int _quicklistNodeAllowMerge(const quicklistNode *a,
  *
  * Returns 0 if used existing head.
  * Returns 1 if new head created. */
+///在头节点中添加新的ziplist，返回0表示用原来头节点，返回1表示改变头节点指针指向新节点
 int quicklistPushHead(quicklist *quicklist, void *value, size_t sz) {
-    quicklistNode *orig_head = quicklist->head;
+    
+    quicklistNode *orig_head = quicklist->head; ///获取快表的头节点
     if (likely(
-            _quicklistNodeAllowInsert(quicklist->head, quicklist->fill, sz))) {
+            _quicklistNodeAllowInsert(quicklist->head, quicklist->fill, sz))) { ///检测是否能够插入这个节点
         quicklist->head->zl =
-            ziplistPush(quicklist->head->zl, value, sz, ZIPLIST_HEAD);
-        quicklistNodeUpdateSz(quicklist->head);
-    } else {
-        quicklistNode *node = quicklistCreateNode();
-        node->zl = ziplistPush(ziplistNew(), value, sz, ZIPLIST_HEAD);
+            ziplistPush(quicklist->head->zl, value, sz, ZIPLIST_HEAD); ///将这个ziplist以头插入的方式插入快表头节点的ziplist中
+        quicklistNodeUpdateSz(quicklist->head); ///更新快表head节点中的ziplist数据记录
+    } else { ///如果插入新的entry后不满足file，size的约定
+        quicklistNode *node = quicklistCreateNode(); ///就需要创建一个新的快表节点 
+        node->zl = ziplistPush(ziplistNew(), value, sz, ZIPLIST_HEAD);///将这个ziplist写入到这个新的节点中
 
-        quicklistNodeUpdateSz(node);
-        _quicklistInsertNodeBefore(quicklist, quicklist->head, node);
+        quicklistNodeUpdateSz(node); ///更新这个新建节点中关于ziplist的信息
+        _quicklistInsertNodeBefore(quicklist, quicklist->head, node); ///将这个节点插入到快表头节点之前，称为新的头节点
     }
-    quicklist->count++;
-    quicklist->head->count++;
-    return (orig_head != quicklist->head);
+    quicklist->count++; ///修改快表中压缩表节点的数目
+    quicklist->head->count++; ///修改头节点中的压缩表的节点数目
+    return (orig_head != quicklist->head);  ///如果头节点发生改变，就返回1，否则返回0
 }
 
 /* Add new entry to tail node of quicklist.
  *
  * Returns 0 if used existing tail.
  * Returns 1 if new tail created. */
+ ///在快表的尾节点插入一个新的ziplist实体，它的操作和在头部插入一样，这里不再进行详细解释了
 int quicklistPushTail(quicklist *quicklist, void *value, size_t sz) {
     quicklistNode *orig_tail = quicklist->tail;
     if (likely(
@@ -511,86 +523,90 @@ int quicklistPushTail(quicklist *quicklist, void *value, size_t sz) {
 /* Create new node consisting of a pre-formed ziplist.
  * Used for loading RDBs where entire ziplists have been stored
  * to be retrieved later. */
+/// 创建一个新的节点，该节点由预先形成的ziplist组成。 用于加载已存储整个ziplist以便以后检索的RDB。 
 void quicklistAppendZiplist(quicklist *quicklist, unsigned char *zl) {
-    quicklistNode *node = quicklistCreateNode();
+    quicklistNode *node = quicklistCreateNode(); ///创建一个新的快表节点
 
-    node->zl = zl;
-    node->count = ziplistLen(node->zl);
-    node->sz = ziplistBlobLen(zl);
+    node->zl = zl; ///将node的ziplist指针指向这个给定的zl
+    node->count = ziplistLen(node->zl); ///初始化节点中压缩表的节点数目
+    node->sz = ziplistBlobLen(zl); ///初始化节点中压缩表的大小
 
-    _quicklistInsertNodeAfter(quicklist, quicklist->tail, node);
-    quicklist->count += node->count;
+    _quicklistInsertNodeAfter(quicklist, quicklist->tail, node); ///将这个节点插入到快表的尾部
+    quicklist->count += node->count; ///更新快表中记录压缩表的大小的数据
 }
 
 /* Append all values of ziplist 'zl' individually into 'quicklist'.
  *
  * This allows us to restore old RDB ziplists into new quicklists
  * with smaller ziplist sizes than the saved RDB ziplist.
+ * 这使我们可以将旧的RDB ziplist还原到新的快速列表中，而列表的大小比保存的RDB ziplist小。
  *
  * Returns 'quicklist' argument. Frees passed-in ziplist 'zl' */
+///将ziplist实体添加到quicklist中
 quicklist *quicklistAppendValuesFromZiplist(quicklist *quicklist,
                                             unsigned char *zl) {
     unsigned char *value;
     unsigned int sz;
     long long longval;
-    char longstr[32] = {0};
+    char longstr[32] = {0}; 
 
-    unsigned char *p = ziplistIndex(zl, 0);
-    while (ziplistGet(p, &value, &sz, &longval)) {
-        if (!value) {
-            /* Write the longval as a string so we can re-add it */
-            sz = ll2string(longstr, sizeof(longstr), longval);
-            value = (unsigned char *)longstr;
+    unsigned char *p = ziplistIndex(zl, 0); ///找到ziplist下标为0的节点地址
+    while (ziplistGet(p, &value, &sz, &longval)) { ///获取p指向节点的值，可能是字符串也可能是整数
+        if (!value) { ///如果值为空的字符串, 那么value就整数类型
+            sz = ll2string(longstr, sizeof(longstr), longval); ///将long long类型的整数转化为字符串
+            value = (unsigned char *)longstr; ///并将这个字符串保存到value中
         }
-        quicklistPushTail(quicklist, value, sz);
-        p = ziplistNext(zl, p);
+        quicklistPushTail(quicklist, value, sz); ///将这个ziplist加入到快表的尾节点中
+        p = ziplistNext(zl, p);  ///p指向下一个ziplist节点 
     }
-    zfree(zl);
-    return quicklist;
+    zfree(zl);  /// 释放原来的ziplist
+    return quicklist; ///返回修改后的快表
 }
 
-/* Create new (potentially multi-node) quicklist from a single existing ziplist.
- *
- * Returns new quicklist.  Frees passed-in ziplist 'zl'. */
-quicklist *quicklistCreateFromZiplist(int fill, int compress,
-                                      unsigned char *zl) {
+///创建一个快表，并经ziplist加入其中
+quicklist *quicklistCreateFromZiplist(int fill, int compress,unsigned char *zl) {
+   
+    ///这个函数就是县创建一个空的快表表，然后将zl加入到这个快表中
     return quicklistAppendValuesFromZiplist(quicklistNew(fill, compress), zl);
 }
 
+///从快表中删除节点n
 #define quicklistDeleteIfEmpty(ql, n)                                          \
     do {                                                                       \
-        if ((n)->count == 0) {                                                 \
-            __quicklistDelNode((ql), (n));                                     \
+        if ((n)->count == 0) {     ///如果n的压缩表大小为0                        \
+            __quicklistDelNode((ql), (n));   ///只需要删除这个节点即可             \
             (n) = NULL;                                                        \
         }                                                                      \
     } while (0)
 
+///从快表中删除节点node        
 REDIS_STATIC void __quicklistDelNode(quicklist *quicklist,
                                      quicklistNode *node) {
     /* Update the bookmark if any */
-    quicklistBookmark *bm = _quicklistBookmarkFindByNode(quicklist, node);
+    quicklistBookmark *bm = _quicklistBookmarkFindByNode(quicklist, node); ///如果node是一个bookmark，需要进行更新
     if (bm) {
-        bm->node = node->next;
+        bm->node = node->next; ///更新bookmark中的node指针
         /* if the bookmark was to the last node, delete it. */
-        if (!bm->node)
-            _quicklistBookmarkDelete(quicklist, bm);
+        if (!bm->node) ///如果bookmark指向的node为最后一个节点，就删除这个bookmark
+            _quicklistBookmarkDelete(quicklist, bm); 
     }
 
-    if (node->next)
+    if (node->next) ///删除节点，调整节点指针
         node->next->prev = node->prev;
     if (node->prev)
         node->prev->next = node->next;
 
-    if (node == quicklist->tail) {
+    if (node == quicklist->tail) { ///如果删除节点是尾节点
         quicklist->tail = node->prev;
     }
 
-    if (node == quicklist->head) {
+    if (node == quicklist->head) { ///如果删除的节点为头节点
         quicklist->head = node->next;
     }
 
     /* If we deleted a node within our compress depth, we
      * now have compressed nodes needing to be decompressed. */
+    ///如果我们，则现在有需要解压缩的压缩节点。 
     __quicklistCompress(quicklist, NULL);
 
     quicklist->count -= node->count;
