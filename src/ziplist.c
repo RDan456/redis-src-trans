@@ -127,31 +127,31 @@
 /// 不同的编码/长度的种类
 #define ZIP_STR_MASK 0xc0 ///字符串类型的长度 1100 0000
 #define ZIP_INT_MASK 0x30 ///INT类型长度 0011 0000
-#define ZIP_STR_06B (0 << 6) ///字符串类型的长度 0000 0000
-#define ZIP_STR_14B (1 << 6) ///字符串类型的长度 0100 0000
-#define ZIP_STR_32B (2 << 6) ///字符串的长度 1000 0000
-#define ZIP_INT_16B (0xc0 | 0<<4) ///INT16类型长度 1100 0000
-#define ZIP_INT_32B (0xc0 | 1<<4) //1101 0000
-#define ZIP_INT_64B (0xc0 | 2<<4) //1110 0000
-#define ZIP_INT_24B (0xc0 | 3<<4) //1111 0000
+#define ZIP_STR_06B (0 << 6) ///字符串的长度编码 0000 0000
+#define ZIP_STR_14B (1 << 6) ///字符串的长度编码 0100 0000
+#define ZIP_STR_32B (2 << 6) ///字符串的长度编码 1000 0000
+#define ZIP_INT_16B (0xc0 | 0<<4) ///整数类型编码 1100 0000
+#define ZIP_INT_32B (0xc0 | 1<<4) ///整数类型编码 1101 0000
+#define ZIP_INT_64B (0xc0 | 2<<4) ///整数类型编码 1110 0000
+#define ZIP_INT_24B (0xc0 | 3<<4) ///整数类型编码 1111 0000
 #define ZIP_INT_8B 0xfe //1111 1110
 
 ///4位整数立即编码| 1111xxxx | xxxx在0001和1101之间。
-#define ZIP_INT_IMM_MASK 0x0f   ///掩码以提取4位值。 需要加一个来重建值。 //0000 1111
-#define ZIP_INT_IMM_MIN 0xf1    /* 11110001 */
-#define ZIP_INT_IMM_MAX 0xfd    /* 11111101 */
+#define ZIP_INT_IMM_MASK 0x0f   ///0000 1111
+#define ZIP_INT_IMM_MIN 0xf1    ///1111 0001
+#define ZIP_INT_IMM_MAX 0xfd    ///1111 1101 
 
 ///24位能够表示的最大整数值和最小整数整数值
-#define INT24_MAX 0x7fffff //0111 1111 1111 1111 1111 1111
-#define INT24_MIN (-INT24_MAX - 1) //1000 0000 0000 0000 0000 0000
+#define INT24_MAX 0x7fffff ///0111 1111 1111 1111 1111 1111
+#define INT24_MIN (-INT24_MAX - 1) ///1000 0000 0000 0000 0000 0000
 
 ///宏定义，用于确定是否为字符串。 字符串从不以“11”作为第一个字节的最高有效位开头。
 #define ZIP_IS_STR(enc) (((enc) & ZIP_STR_MASK) < ZIP_STR_MASK)
 
 /* Return total bytes a ziplist is composed of. */
-///获取整个ziplist的内存字节数，*((uint32_t*)(zl))的意思就是先将zl强制转化为32位的无符号整数，然后通过指针
+///获取整个ziplist的字节总数，*((uint32_t*)(zl))的意思就是先将zl强制转化为32位的无符号整数，然后通过指针
 ///就可以访问这个数对应内存的4个字节的信息。
-#define ZIPLIST_BYTES(zl)       (*((uint32_t*)(zl)))
+#define ZIPLIST_BYTES(zl) (*((uint32_t*)(zl)))
 
 /* Return the offset of the last item inside the ziplist. */
 ///获取压缩表终止位置到起始位置的偏移量
@@ -165,7 +165,7 @@
 /* The size of a ziplist header: two 32 bit integers for the total
  * bytes count and last item offset. One 16 bit integer for the number
  * of items field. */
-///获取压缩表的长度
+///获取压缩表表头的长度
 #define ZIPLIST_HEADER_SIZE     (sizeof(uint32_t)*2+sizeof(uint16_t))
 
 /* Size of the "end of ziplist" entry. Just one byte. */
@@ -173,11 +173,11 @@
 #define ZIPLIST_END_SIZE        (sizeof(uint8_t))
 
 /* Return the pointer to the first entry of a ziplist. */
-///获取压缩表中存储实体真正开始的位置（也就是头节点结束的位置）
+///获取压缩表节点开始的位置
 #define ZIPLIST_ENTRY_HEAD(zl)  ((zl)+ZIPLIST_HEADER_SIZE)
 
 /* Return the pointer to the last entry of a ziplist, using the last entry offset inside the ziplist header. */
-///返回压缩表为节点的位置
+///返回压缩表尾节点的位置
 #define ZIPLIST_ENTRY_TAIL(zl)  ((zl)+intrev32ifbe(ZIPLIST_TAIL_OFFSET(zl)))
 
 /* Return the pointer to the last byte of a ziplist, which is, the end of ziplist FF entry. */
@@ -202,8 +202,8 @@ typedef struct zlentry {
     unsigned int prevrawlen;     ///前驱节点的长度
     unsigned int lensize;        ///编码当前节点长度所需要的字节大小
     unsigned int len;            ///当前节点的大小
-    unsigned int headersize;     ///prevrawlensize + lensize.
-    unsigned char encoding;      ///节点采用的编码格式
+    unsigned int headersize;     ///当前节点头部长度prevrawlensize + lensize.
+    unsigned char encoding;      ///当前节点采用的编码格式
     unsigned char *p;            ///指向当前节点的指针
 } zlentry;
 
@@ -246,7 +246,7 @@ unsigned int zipIntSize(unsigned char encoding) {
 unsigned int zipStoreEntryEncoding(unsigned char *p, unsigned char encoding, unsigned int rawlen) {
     unsigned char len = 1, buf[5];
 
-    if (ZIP_IS_STR(encoding)) { ///如果编码格式是字符串的编码格式
+    if (ZIP_IS_STR(encoding)) { ///如果是字符串编码
         
         ///尽管给出了编码，但可能未为字符串设置编码，因此我们在这里使用原始长度来确定它。
         if (rawlen <= 0x3f) { ///如果字符串长度小于或者等于 0x3f
@@ -471,15 +471,15 @@ void zipEntry(unsigned char *p, zlentry *e) {
     e->p = p; ///设置当前节点的指针
 }
 
-///新建一个空的节点
+///创建一个新的空压缩表
 unsigned char *ziplistNew(void) {
     unsigned int bytes = ZIPLIST_HEADER_SIZE+ZIPLIST_END_SIZE; ///获取表头大小和表尾大小的和
     unsigned char *zl = zmalloc(bytes); ///申请内存空间
-    ZIPLIST_BYTES(zl) = intrev32ifbe(bytes); ///讲bytes成员初始化为bytes
+    ZIPLIST_BYTES(zl) = intrev32ifbe(bytes); ///bytes成员初始化
     ZIPLIST_TAIL_OFFSET(zl) = intrev32ifbe(ZIPLIST_HEADER_SIZE); ///初始化为节点偏移量，将其值设置为头结点的大小
     ZIPLIST_LENGTH(zl) = 0; ///节点的长度为0
     zl[bytes-1] = ZIP_END; ///将最后一个字节设置为0xff
-    return zl; ///返回新建的节点
+    return zl; 
 }
 
 ///调整压缩列表的大小。
