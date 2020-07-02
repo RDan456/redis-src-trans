@@ -53,12 +53,12 @@ void _quicklistBookmarkDelete(quicklist *ql, quicklistBookmark *bm);
 ///初始化快表节点中的压缩表信息
 #define initEntry(e)                                                           \
     do {                                                                       \
-        (e)->zi = (e)->value = NULL; ///初始化压缩表及其值                                           \
-        (e)->longval = -123456789;   ///初始化压缩表的大小（字节数）                                          \
-        (e)->quicklist = NULL;       ///初始化压缩表属于哪个快表                                           \
-        (e)->node = NULL;            ///初始化压缩表处与快表中那个节点                                           \
-        (e)->offset = 123456789;     ///初始化当前压缩表的的偏移量                                     \
-        (e)->sz = 0;                 ///初始化当前压缩表的节点数                                          \
+        (e)->zi = (e)->value = NULL; ///初始化压缩表及其值                        \
+        (e)->longval = -123456789;   ///初始化压缩表的大小（字节数）                \
+        (e)->quicklist = NULL;       ///初始化压缩表属于哪个快表                   \
+        (e)->node = NULL;            ///初始化压缩表处与快表中那个节点              \
+        (e)->offset = 123456789;     ///初始化当前压缩表的的偏移量                 \
+        (e)->sz = 0;                 ///初始化当前压缩表的节点数                   \
     } while (0)
 
 #if __GNUC__ >= 3
@@ -604,50 +604,45 @@ REDIS_STATIC void __quicklistDelNode(quicklist *quicklist,
         quicklist->head = node->next;
     }
 
-    /* If we deleted a node within our compress depth, we
-     * now have compressed nodes needing to be decompressed. */
-    ///如果我们，则现在有需要解压缩的压缩节点。 
+    ///如果我们删除的节点在压缩范围内，则现在需要解压缩的压缩节点。 
     __quicklistCompress(quicklist, NULL);
 
-    quicklist->count -= node->count;
+    quicklist->count -= node->count; //更新快表中压缩表节点数量
 
-    zfree(node->zl);
-    zfree(node);
-    quicklist->len--;
+    zfree(node->zl); ///释放压缩表
+    zfree(node); ///释放节点
+    quicklist->len--; ///快表中的节点数量-1
 }
 
-/* Delete one entry from list given the node for the entry and a pointer
- * to the entry in the node.
- *
- * Note: quicklistDelIndex() *requires* uncompressed nodes because you
- *       already had to get *p from an uncompressed node somewhere.
- *
- * Returns 1 if the entire node was deleted, 0 if node still exists.
- * Also updates in/out param 'p' with the next offset in the ziplist. */
+///从快表中的node节点中删除压缩表节点p，如果删除后该快表节点的压缩表节点数为0，就需要删除这个快表节点。
+/// 如果删除了快表节点，返回1，否则返回0
 REDIS_STATIC int quicklistDelIndex(quicklist *quicklist, quicklistNode *node,
                                    unsigned char **p) {
     int gone = 0;
 
-    node->zl = ziplistDelete(node->zl, p);
-    node->count--;
-    if (node->count == 0) {
+    node->zl = ziplistDelete(node->zl, p); ///删除node节点的ziplist中的p
+    node->count--; ///快表节点中记录压缩表节点数的计算器-1
+    if (node->count == 0) { ///如果删除压缩表节点后node的count变成了0
         gone = 1;
-        __quicklistDelNode(quicklist, node);
+        __quicklistDelNode(quicklist, node); ///就需要从快表中删除节点
     } else {
-        quicklistNodeUpdateSz(node);
+        quicklistNodeUpdateSz(node); ///否则就更新快表中的node节点
     }
-    quicklist->count--;
+    quicklist->count--; ///快表中的压缩表节点计数器-1
     /* If we deleted the node, the original node is no longer valid */
-    return gone ? 1 : 0;
+    return gone ? 1 : 0; ///如果删除快表节点，就返回1，否则返回0
 }
 
 /* Delete one element represented by 'entry'
  *
  * 'entry' stores enough metadata to delete the proper position in
  * the correct ziplist in the correct quicklist node. */
+///删除一个快表节点
 void quicklistDelEntry(quicklistIter *iter, quicklistEntry *entry) {
-    quicklistNode *prev = entry->node->prev;
-    quicklistNode *next = entry->node->next;
+    
+    quicklistNode *prev = entry->node->prev; ///获取快表的头指针
+    quicklistNode *next = entry->node->next; ///获取快表的尾指针
+    ///
     int deleted_node = quicklistDelIndex((quicklist *)entry->quicklist,
                                          entry->node, &entry->zi);
 
