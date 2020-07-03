@@ -47,9 +47,10 @@ typedef struct quicklistLZF {
  * deleted, some overhead remains (to avoid resonance).
  * The number of bookmarks used should be kept to minimum since it also adds
  * overhead on node deletion (searching for a bookmark to update). */
+///书签，加速查询
 typedef struct quicklistBookmark {
-    quicklistNode *node;
-    char *name;
+    quicklistNode *node; ///书签所属的快表节点
+    char *name; ///书签的名称
 } quicklistBookmark;
 
 #if UINTPTR_MAX == 0xffffffff
@@ -126,46 +127,46 @@ typedef struct quicklistEntry {
     ((node)->encoding == QUICKLIST_NODE_ENCODING_LZF)
 
 quicklist *quicklistCreate(void); ///创建一个空的压缩表
-quicklist *quicklistNew(int fill, int compress);
-void quicklistSetCompressDepth(quicklist *quicklist, int depth);
-void quicklistSetFill(quicklist *quicklist, int fill);
-void quicklistSetOptions(quicklist *quicklist, int fill, int depth);
-void quicklistRelease(quicklist *quicklist);
-int quicklistPushHead(quicklist *quicklist, void *value, const size_t sz);
-int quicklistPushTail(quicklist *quicklist, void *value, const size_t sz);
+quicklist *quicklistNew(int fill, int compress); ///创建一个新的快表
+void quicklistSetCompressDepth(quicklist *quicklist, int depth) ; ///设置快表的a压缩深度
+void quicklistSetFill(quicklist *quicklist, int fill); ///设置快表的fill参数
+void quicklistSetOptions(quicklist *quicklist, int fill, int depth); ///设置快表的参数
+void quicklistRelease(quicklist *quicklist); ///示范整个快表
+int quicklistPushHead(quicklist *quicklist, void *value, const size_t sz); ///在快表的头部节点中加入entry
+int quicklistPushTail(quicklist *quicklist, void *value, const size_t sz); ///在快表尾部节点中加入entry
 void quicklistPush(quicklist *quicklist, void *value, const size_t sz,
-                   int where);
-void quicklistAppendZiplist(quicklist *quicklist, unsigned char *zl);
+                   int where); ///在快表节点中加入entry，通过where确定是是头节点还是尾节点插入
+void quicklistAppendZiplist(quicklist *quicklist, unsigned char *zl); ///在快表的节点中追加ziplist
 quicklist *quicklistAppendValuesFromZiplist(quicklist *quicklist,
-                                            unsigned char *zl);
+                                            unsigned char *zl); ///
 quicklist *quicklistCreateFromZiplist(int fill, int compress,
-                                      unsigned char *zl);
+                                      unsigned char *zl); ///通过zl创建快表节点
 void quicklistInsertAfter(quicklist *quicklist, quicklistEntry *node,
-                          void *value, const size_t sz);
+                          void *value, const size_t sz); ///在node节点后面插入entry
 void quicklistInsertBefore(quicklist *quicklist, quicklistEntry *node,
-                           void *value, const size_t sz);
-void quicklistDelEntry(quicklistIter *iter, quicklistEntry *entry);
+                           void *value, const size_t sz); ///在node前面插入entry
+void quicklistDelEntry(quicklistIter *iter, quicklistEntry *entry); ///通过迭代器的形式删除快表节点中俄entry
 int quicklistReplaceAtIndex(quicklist *quicklist, long index, void *data,
-                            int sz);
-int quicklistDelRange(quicklist *quicklist, const long start, const long stop);
-quicklistIter *quicklistGetIterator(const quicklist *quicklist, int direction);
+                            int sz); ///替换快表节点中zl index出的数据
+int quicklistDelRange(quicklist *quicklist, const long start, const long stop); ///删除快表节点中固定范围的压缩表节点
+quicklistIter *quicklistGetIterator(const quicklist *quicklist, int direction);///创建一个快表迭代器
 quicklistIter *quicklistGetIteratorAtIdx(const quicklist *quicklist,
-                                         int direction, const long long idx);
-int quicklistNext(quicklistIter *iter, quicklistEntry *node);
-void quicklistReleaseIterator(quicklistIter *iter);
-quicklist *quicklistDup(quicklist *orig);
+                                         int direction, const long long idx); ///获取idx处的迭代器
+int quicklistNext(quicklistIter *iter, quicklistEntry *node); ///通过迭代器，获取下一个节点
+void quicklistReleaseIterator(quicklistIter *iter); ///释放快表迭代器
+quicklist *quicklistDup(quicklist *orig); ///快表复制
 int quicklistIndex(const quicklist *quicklist, const long long index,
-                   quicklistEntry *entry);
-void quicklistRewind(quicklist *quicklist, quicklistIter *li);
-void quicklistRewindTail(quicklist *quicklist, quicklistIter *li);
-void quicklistRotate(quicklist *quicklist);
+                   quicklistEntry *entry); ///获取快表节点的压缩表index处的entry
+void quicklistRewind(quicklist *quicklist, quicklistIter *li); ///
+void quicklistRewindTail(quicklist *quicklist, quicklistIter *li); //
+void quicklistRotate(quicklist *quicklist); ///旋转快表
 int quicklistPopCustom(quicklist *quicklist, int where, unsigned char **data,
                        unsigned int *sz, long long *sval,
                        void *(*saver)(unsigned char *data, unsigned int sz));
 int quicklistPop(quicklist *quicklist, int where, unsigned char **data,
-                 unsigned int *sz, long long *slong);
+                 unsigned int *sz, long long *slong); ///在头节点或者尾节点中弹出entry
 unsigned long quicklistCount(const quicklist *ql);
-int quicklistCompare(unsigned char *p1, unsigned char *p2, int p2_len);
+int quicklistCompare(unsigned char *p1, unsigned char *p2, int p2_len); //比较快表节点中两个压缩表节点
 size_t quicklistGetLzf(const quicklistNode *node, void **data);
 
 /* bookmarks */

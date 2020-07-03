@@ -9,3 +9,4 @@
 2020-06-30|发布了redis的链表（list）的源代码解读，主要在alist.h和alist.c两个文件中|待定
 2020-06-30|发布了redis的字典（dict）的源代码解读，主要在dict.h和dict.c两个文件中|待定
 2020-07-01|发布了redis的压缩表（ziplist）的源代码解读，主要在ziplist.h和ziplist.c两个文件中|待定
+2020-07-03|发布了redis的快表（quicklist）的源代码解读，主要在quicklist.h和quicklist.c两个文件中|待定

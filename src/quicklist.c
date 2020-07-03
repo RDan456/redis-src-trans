@@ -1285,24 +1285,21 @@ void quicklistRotate(quicklist *quicklist) {
     char longstr[32] = {0};
     ziplistGet(p, &value, &sz, &longval); ///获取p所指位置的ziplist的值
 
-    if (!value) {///
-        /* Write the longval as a string so we can re-add it */
-        sz = ll2string(longstr, sizeof(longstr), longval);
-        value = (unsigned char *)longstr;
+    if (!value) {///如果value的字符串为空，表示这个压缩表节点数据为long long类型
+        sz = ll2string(longstr, sizeof(longstr), longval); ///将long long类型的整数转化为z字符串
+        value = (unsigned char *)longstr; ///并这个字符串赋值给value
     }
-
-    /* Add tail entry to head (must happen before tail is deleted). */
+    ///将entry节点的信息保存到快表的头部
     quicklistPushHead(quicklist, value, sz);
 
     /* If quicklist has only one node, the head ziplist is also the
      * tail ziplist and PushHead() could have reallocated our single ziplist,
      * which would make our pre-existing 'p' unusable. */
-    if (quicklist->len == 1) {
-        p = ziplistIndex(quicklist->tail->zl, -1);
+    if (quicklist->len == 1) { ///如果快表只有一个节点
+        p = ziplistIndex(quicklist->tail->zl, -1); ///返回entry节点的指针
     }
-
     /* Remove tail entry. */
-    quicklistDelIndex(quicklist, quicklist->tail, &p);
+    quicklistDelIndex(quicklist, quicklist->tail, &p); ///移除p指向的entry
 }
 
 /* pop from quicklist and return result in 'data' ptr.  Value of 'data'
@@ -1314,6 +1311,8 @@ void quicklistRotate(quicklist *quicklist) {
  * Return value of 0 means no elements available.
  * Return value of 1 means check 'data' and 'sval' for values.
  * If 'data' is set, use 'data' and 'sz'.  Otherwise, use 'sval'. */
+///从快表的头节点或者尾节点中pop处一个entry（压缩表实体），并将它的value保存到data或者saver中
+///返回0表示没有entry可c弹出，返回1表示正常的pop出元素
 int quicklistPopCustom(quicklist *quicklist, int where, unsigned char **data,
                        unsigned int *sz, long long *sval,
                        void *(*saver)(unsigned char *data, unsigned int sz)) {
@@ -1321,42 +1320,42 @@ int quicklistPopCustom(quicklist *quicklist, int where, unsigned char **data,
     unsigned char *vstr;
     unsigned int vlen;
     long long vlong;
-    int pos = (where == QUICKLIST_HEAD) ? 0 : -1;
+    int pos = (where == QUICKLIST_HEAD) ? 0 : -1; ///where = 0表示头节点，= 1表示尾节点
 
-    if (quicklist->count == 0)
+    if (quicklist->count == 0) ///如果快表中的压缩表节点数量为0，则直接返回
         return 0;
-
-    if (data)
+ 
+    if (data) ///如果data不为空，需要将它置空
         *data = NULL;
-    if (sz)
+    if (sz) ///如果sz不为空，需要将其初始化
         *sz = 0;
     if (sval)
         *sval = -123456789;
 
-    quicklistNode *node;
-    if (where == QUICKLIST_HEAD && quicklist->head) {
+    quicklistNode *node; ///快表节点指针声明
+    if (where == QUICKLIST_HEAD && quicklist->head) { ///在头节点弹出
         node = quicklist->head;
-    } else if (where == QUICKLIST_TAIL && quicklist->tail) {
+    } else if (where == QUICKLIST_TAIL && quicklist->tail) { ///在尾节点中弹出
         node = quicklist->tail;
     } else {
         return 0;
     }
 
-    p = ziplistIndex(node->zl, pos);
-    if (ziplistGet(p, &vstr, &vlen, &vlong)) {
-        if (vstr) {
-            if (data)
-                *data = saver(vstr, vlen);
-            if (sz)
-                *sz = vlen;
-        } else {
+    p = ziplistIndex(node->zl, pos); ///获取压缩表中的pos位置出的元素地址
+    if (ziplistGet(p, &vstr, &vlen, &vlong)) { ///获取p所指的位置的值
+        if (vstr) { ///如果字符串不为空，数据类型为long long类型整数
+            if (data) ///如果data为空
+                *data = saver(vstr, vlen);///调用特定的函数将字符串值保存到*data
+            if (sz) ///如果sz不为空
+                *sz = vlen; ///保存字符串的长度
+        } else { ///如果字符串为空，表示为long long类型的数据
             if (data)
                 *data = NULL;
             if (sval)
-                *sval = vlong;
+                *sval = vlong; ///保存整数值
         }
-        quicklistDelIndex(quicklist, node, &p);
-        return 1;
+        quicklistDelIndex(quicklist, node, &p); ///将entry从ziplist中删除
+        return 1; ///返回操作成功
     }
     return 0;
 }
@@ -1393,7 +1392,7 @@ int quicklistPop(quicklist *quicklist, int where, unsigned char **data,
     return ret;
 }
 
-/* Wrapper to allow argument-based switching between HEAD/TAIL pop */
+///包装程序允许在HEAD / TAIL pop之间进行基于参数的切换
 void quicklistPush(quicklist *quicklist, void *value, const size_t sz,
                    int where) {
     if (where == QUICKLIST_HEAD) {
@@ -1403,34 +1402,33 @@ void quicklistPush(quicklist *quicklist, void *value, const size_t sz,
     }
 }
 
-/* Create or update a bookmark in the list which will be updated to the next node
- * automatically when the one referenced gets deleted.
- * Returns 1 on success (creation of new bookmark or override of an existing one).
- * Returns 0 on failure (reached the maximum supported number of bookmarks).
- * NOTE: use short simple names, so that string compare on find is quick.
- * NOTE: bookmakrk creation may re-allocate the quicklist, so the input pointer
-         may change and it's the caller responsibilty to update the reference.
+/* 在列表中创建或更新书签，当引用的书签被删除时，书签将自动更新到下一个节点。
+ * 成功返回1（创建新书签或覆盖现有书签）。
+ * 失败时返回0（已达到书签的最大支持数量）。
+ * 注意：请使用简短的简单名称，以便快速查找字符串。
+ * 注意：bookmakrk的创建可能会重新分配快速列表，因此输入指针可能会更改，这是调用者的责任来更新引用。
  */
 int quicklistBookmarkCreate(quicklist **ql_ref, const char *name, quicklistNode *node) {
     quicklist *ql = *ql_ref;
-    if (ql->bookmark_count >= QL_MAX_BM)
+    if (ql->bookmark_count >= QL_MAX_BM)///如果bookmark的数量已经到达了最大值，直接返回
         return 0;
-    quicklistBookmark *bm = _quicklistBookmarkFindByName(ql, name);
-    if (bm) {
-        bm->node = node;
+    quicklistBookmark *bm = _quicklistBookmarkFindByName(ql, name); ///通过名字查询bookmark
+    if (bm) { ///如果这个bm不为空
+        bm->node = node; ///就让这个bm的节点指针指向这个节点，返回1
         return 1;
     }
-    ql = zrealloc(ql, sizeof(quicklist) + (ql->bookmark_count+1) * sizeof(quicklistBookmark));
+    ql = zrealloc(ql, sizeof(quicklist) + (ql->bookmark_count+1) * sizeof(quicklistBookmark)); ///重新分配内存大小
     *ql_ref = ql;
-    ql->bookmarks[ql->bookmark_count].node = node;
-    ql->bookmarks[ql->bookmark_count].name = zstrdup(name);
-    ql->bookmark_count++;
+    ql->bookmarks[ql->bookmark_count].node = node; ///修改快表书签指向的节点
+    ql->bookmarks[ql->bookmark_count].name = zstrdup(name); ///修改快表书签的名字
+    ql->bookmark_count++; ///快表的书签数量+1
     return 1;
 }
 
 /* Find the quicklist node referenced by a named bookmark.
  * When the bookmarked node is deleted the bookmark is updated to the next node,
  * and if that's the last node, the bookmark is deleted (so find returns NULL). */
+///通过名字查询书签集合中是否存在该书签
 quicklistNode *quicklistBookmarkFind(quicklist *ql, const char *name) {
     quicklistBookmark *bm = _quicklistBookmarkFindByName(ql, name);
     if (!bm) return NULL;
@@ -1440,6 +1438,7 @@ quicklistNode *quicklistBookmarkFind(quicklist *ql, const char *name) {
 /* Delete a named bookmark.
  * returns 0 if bookmark was not found, and 1 if deleted.
  * Note that the bookmark memory is not freed yet, and is kept for future use. */
+///通过名字删除书签
 int quicklistBookmarkDelete(quicklist *ql, const char *name) {
     quicklistBookmark *bm = _quicklistBookmarkFindByName(ql, name);
     if (!bm)
@@ -1448,6 +1447,7 @@ int quicklistBookmarkDelete(quicklist *ql, const char *name) {
     return 1;
 }
 
+///通过名字查询书签
 quicklistBookmark *_quicklistBookmarkFindByName(quicklist *ql, const char *name) {
     unsigned i;
     for (i=0; i<ql->bookmark_count; i++) {
@@ -1458,6 +1458,7 @@ quicklistBookmark *_quicklistBookmarkFindByName(quicklist *ql, const char *name)
     return NULL;
 }
 
+///返回属于node节点的书签
 quicklistBookmark *_quicklistBookmarkFindByNode(quicklist *ql, quicklistNode *node) {
     unsigned i;
     for (i=0; i<ql->bookmark_count; i++) {
@@ -1468,6 +1469,7 @@ quicklistBookmark *_quicklistBookmarkFindByNode(quicklist *ql, quicklistNode *no
     return NULL;
 }
 
+///删除书签
 void _quicklistBookmarkDelete(quicklist *ql, quicklistBookmark *bm) {
     int index = bm - ql->bookmarks;
     zfree(bm->name);
@@ -1477,6 +1479,7 @@ void _quicklistBookmarkDelete(quicklist *ql, quicklistBookmark *bm) {
      * it may be re-used later (a call to realloc may NOP). */
 }
 
+///删除快表中所有的书签
 void quicklistBookmarksClear(quicklist *ql) {
     while (ql->bookmark_count)
         zfree(ql->bookmarks[--ql->bookmark_count].name);
