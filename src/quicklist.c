@@ -1283,10 +1283,9 @@ void quicklistRotate(quicklist *quicklist) {
     long long longval;
     unsigned int sz;
     char longstr[32] = {0};
-    ziplistGet(p, &value, &sz, &longval);
+    ziplistGet(p, &value, &sz, &longval); ///获取p所指位置的ziplist的值
 
-    /* If value found is NULL, then ziplistGet populated longval instead */
-    if (!value) {
+    if (!value) {///
         /* Write the longval as a string so we can re-add it */
         sz = ll2string(longstr, sizeof(longstr), longval);
         value = (unsigned char *)longstr;
