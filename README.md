@@ -11,3 +11,4 @@
 2020-07-01|发布了redis的压缩表（ziplist）的源代码解读，主要在ziplist.h、ziplist.c文件中|待定
 2020-07-02|发布了redis的快表（quicklist）的源代码解读，主要在quicklist.h、quicklist.c文件中|待定
 2020-07-03|发布了redis的整数集合（intset）的源代码解读，主要在intset.h、intset.c文件中|待定
+2020-07-04|发布了redis的跳跃表（skiplist）的源代码解读，主要在server.h、t_zset.c文件中|待定
