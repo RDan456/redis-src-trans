@@ -12,5 +12,8 @@
 2020-07-02|发布redis的快表（quicklist）源代码解读，主要在quicklist.h、quicklist.c文件中|待定
 2020-07-03|发布redis的整数集合（intset）源代码解读，主要在intset.h、intset.c文件中|待定
 2020-07-04|发布redis的跳跃表（skiplist）源代码解读，主要在server.h、t_zset.c文件中|待定
+2020-07-06|hyperloglog(正在进行中)|待定
+2020-07-08|geo（正在进行中）|待定
+2020-07-10|bloomfilter布隆过滤器（正在进行中）|待定
 2020-07-13|发布redis的对象（redisoject）源代码解读，主要在server.h和object.c文件中|待定
 
