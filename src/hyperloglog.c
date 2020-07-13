@@ -1,32 +1,6 @@
 /* hyperloglog.c - Redis HyperLogLog probabilistic cardinality approximation.
  * This file implements the algorithm and the exported Redis commands.
- *
- * Copyright (c) 2014, Salvatore Sanfilippo <antirez at gmail dot com>
- * All rights reserved.
- *
- * Redistribution and use in source and binary forms, with or without
- * modification, are permitted provided that the following conditions are met:
- *
- *   * Redistributions of source code must retain the above copyright notice,
- *     this list of conditions and the following disclaimer.
- *   * Redistributions in binary form must reproduce the above copyright
- *     notice, this list of conditions and the following disclaimer in the
- *     documentation and/or other materials provided with the distribution.
- *   * Neither the name of Redis nor the names of its contributors may be used
- *     to endorse or promote products derived from this software without
- *     specific prior written permission.
- *
- * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
- * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
- * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
- * ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT OWNER OR CONTRIBUTORS BE
- * LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
- * CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
- * SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
- * INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
- * CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
- * ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
- * POSSIBILITY OF SUCH DAMAGE.
+ * hyperloglog.c-Redis HyperLogLog概率基数近似值。 该文件实现算法和导出的Redis命令。
  */
 
 #include "server.h"
@@ -34,35 +8,31 @@
 #include <stdint.h>
 #include <math.h>
 
-/* The Redis HyperLogLog implementation is based on the following ideas:
+/* Redis HyperLogLog实现基于以下思想：
  *
- * * The use of a 64 bit hash function as proposed in [1], in order to don't
- *   limited to cardinalities up to 10^9, at the cost of just 1 additional
- *   bit per register.
- * * The use of 16384 6-bit registers for a great level of accuracy, using
- *   a total of 12k per key.
- * * The use of the Redis string data type. No new type is introduced.
- * * No attempt is made to compress the data structure as in [1]. Also the
- *   algorithm used is the original HyperLogLog Algorithm as in [2], with
- *   the only difference that a 64 bit hash function is used, so no correction
- *   is performed for values near 2^32 as in [1].
+ * * 为了不限于基数最大为10 ^ 9，使用[1]中提出的64位散列函数，每个寄存器仅增加1位。
  *
- * [1] Heule, Nunkesser, Hall: HyperLogLog in Practice: Algorithmic
- *     Engineering of a State of The Art Cardinality Estimation Algorithm.
+ * * 使用16384个6位寄存器可实现很高的准确性，每个键总共使用12k。
  *
- * [2] P. Flajolet, Éric Fusy, O. Gandouet, and F. Meunier. Hyperloglog: The
- *     analysis of a near-optimal cardinality estimation algorithm.
+ * * 使用Redis字符串数据类型。 没有引入新类型。
+ * * 没有像[1]中那样尝试压缩数据结构。 同样使用的算法是[2]中的原始HyperLogLog算法，唯一的区别在于使用了64位哈希函数，
+ *   因此不像[1]中那样对2 ^ 32附近的值执行校正。
  *
- * Redis uses two representations:
+ * [1] Heule, Nunkesser, Hall: 实践中的HyperLogLog：最新基数估计算法的算法工程。
  *
- * 1) A "dense" representation where every entry is represented by
- *    a 6-bit integer.
+ * [2] P.Flajolet, Éric Fusy, O.Gandouet, and F.Meunier.Hyperloglog：一种近似最佳基数估计算法的分析。
+ *
+ * Redis使用两种表示形式：
+ *
+ * 1) “密集”表示，其中每个条目均由6位整数表示。
+ *   
  * 2) A "sparse" representation using run length compression suitable
  *    for representing HyperLogLogs with many registers set to 0 in
  *    a memory efficient way.
+ * 2) 使用游程长度压缩的“稀疏”表示形式适合以内存有效方式表示将许多寄存器设置为0的HyperLogLog。
  *
  *
- * HLL header
+ * HLL toub
  * ===
  *
  * Both the dense and sparse representation have a 16 byte header as follows:

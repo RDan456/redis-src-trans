@@ -603,25 +603,28 @@ typedef struct RedisModuleDigest {
 #define OBJ_SHARED_REFCOUNT INT_MAX     /* Global object never destroyed. */
 #define OBJ_STATIC_REFCOUNT (INT_MAX-1) /* Object allocated in the stack. */
 #define OBJ_FIRST_SPECIAL_REFCOUNT OBJ_STATIC_REFCOUNT
+
+///redis中对象结构体的定义
 typedef struct redisObject {
-    unsigned type:4;
-    unsigned encoding:4;
-    unsigned lru:LRU_BITS; /* LRU time (relative to global lru_clock) or
-                            * LFU data (least significant 8 bits frequency
-                            * and most significant 16 bits access time). */
-    int refcount;
-    void *ptr;
+    unsigned type:4; ///用来表示该对象属于什么类型，用4位来表示
+    unsigned encoding:4; ///用来表示该对象的编码格式，用4位来表示
+    unsigned lru:LRU_BITS; /// LRU时间（相对于全局lru_clock）或LFU数据（最低有效8位频率和最高有效16位访问时间）。 
+    int refcount; ///用来表示该对象被引用的次数
+    void *ptr; ///指针，用来指向该对象
 } robj;
+
 
 /* The a string name for an object's type as listed above
  * Native types are checked against the OBJ_STRING, OBJ_LIST, OBJ_* defines,
  * and Module types have their registered name returned. */
+///获取redis对象类型的名称
 char *getObjectTypeName(robj*);
 
 /* Macro used to initialize a Redis object allocated on the stack.
  * Note that this macro is taken near the structure definition to make sure
  * we'll update it when the structure is changed, to avoid bugs like
  * bug #85 introduced exactly in this way. */
+///采用宏定义的方式，对一个redisObject进行初始化
 #define initStaticStringObject(_var,_ptr) do { \
     _var.refcount = OBJ_STATIC_REFCOUNT; \
     _var.type = OBJ_STRING; \
